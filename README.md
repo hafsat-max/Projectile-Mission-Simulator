@@ -1,3 +1,7 @@
+# Projectile-Mission-Simulator
+
+An interactive Python and Streamlit app for visualizing projectile motion across different gravity environments.
+
 # Physics Lab Simulator
 
 A beginner-friendly Python physics project with a command-line menu.
