@@ -1,141 +1,22 @@
-import math
-
 import matplotlib.pyplot as plt
 import streamlit as st
+import matplotlib.image as mpimg
+from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 
-
-GRAVITY_PRESETS = {
-    "Earth": 9.81,
-    "Moon": 1.62,
-    "Mars": 3.71,
-    "Jupiter": 24.79,
-}
-
-PLANET_COLORS = {
-    "Earth": "#22c55e",
-    "Moon": "#cbd5e1",
-    "Mars": "#f97316",
-    "Jupiter": "#f59e0b",
-}
-
-STATUS_COLORS = {
-    "Hit": "#22c55e",
-    "Lands short": "#f97316",
-    "Overshoots": "#ef4444",
-}
-
-
-def calculate_projectile_motion(
-    initial_velocity: float,
-    launch_angle_degrees: float,
-    gravity: float,
-    time_step: float = 0.02,
-) -> dict:
-    # Resolve initial velocity into horizontal and vertical components:
-    # u_x = u cos(theta), u_y = u sin(theta)
-    angle_radians = math.radians(launch_angle_degrees)
-    velocity_x = initial_velocity * math.cos(angle_radians)
-    velocity_y = initial_velocity * math.sin(angle_radians)
-
-    # Time of flight for a projectile landing at the same height:
-    # T = 2u_y / g
-    time_of_flight = (2 * velocity_y) / gravity
-
-    # Maximum height reached by the projectile:
-    # H = u_y² / 2g
-    max_height = (velocity_y ** 2) / (2 * gravity)
-
-    # Horizontal range:
-    # R = u_x T
-    range_distance = velocity_x * time_of_flight
-
-    time_values = []
-    x_values = []
-    y_values = []
-
-    time = 0.0
-
-    while time <= time_of_flight:
-        # Horizontal position:
-        # x = u_x t
-        x = velocity_x * time
-
-        # Vertical position:
-        # y = u_y t - 1/2 gt²
-        y = velocity_y * time - 0.5 * gravity * time ** 2
-
-        if y >= 0:
-            time_values.append(time)
-            x_values.append(x)
-            y_values.append(y)
-
-        time += time_step
-
-    return {
-        "time": time_values,
-        "x": x_values,
-        "y": y_values,
-        "velocity_x": velocity_x,
-        "velocity_y": velocity_y,
-        "time_of_flight": time_of_flight,
-        "max_height": max_height,
-        "range": range_distance,
-    }
-
-
-def suggest_angles_for_target(
-    initial_velocity: float,
-    target_distance: float,
-    gravity: float,
-) -> tuple[float, float] | None:
-    # Range formula for same launch and landing height:
-    # R = u² sin(2theta) / g
-    #
-    # Rearranged:
-    # sin(2theta) = gR / u²
-    value = (gravity * target_distance) / (initial_velocity ** 2)
-
-    if value > 1:
-        return None
-
-    # First possible angle:
-    # theta_1 = 1/2 sin⁻¹(gR / u²)
-    low_angle = 0.5 * math.degrees(math.asin(value))
-
-    # Second possible angle:
-    # theta_2 = 90° - theta_1
-    high_angle = 90 - low_angle
-
-    return low_angle, high_angle
-
-
-def describe_landing(range_distance: float, target_distance: float, hit_tolerance: float) -> str:
-    difference = range_distance - target_distance
-
-    if abs(difference) <= hit_tolerance:
-        return "Hit"
-    if difference < 0:
-        return "Lands short"
-    return "Overshoots"
-
-
-def metric_card(title: str, value: str, color: str, note: str = "") -> None:
-    st.markdown(
-        f"""
-        <div class="metric-card" style="border-left: 5px solid {color};">
-            <p class="metric-title">{title}</p>
-            <h3 style="color: {color};">{value}</h3>
-            <p class="metric-note">{note}</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+from utils.constants import GRAVITY_PRESETS, PLANET_COLORS, STATUS_COLORS
+from utils.projectile import (
+    calculate_projectile_motion,
+    describe_landing,
+    suggest_angles_for_target,
+)
+from utils.ui import formula_line, metric_card
 
 
 st.set_page_config(
     page_title="Projectile Mission Simulator",
     layout="wide",
 )
+
 
 st.markdown(
     """
@@ -199,8 +80,12 @@ st.markdown(
             background: rgba(15, 23, 42, 0.78);
             border: 1px solid rgba(148, 163, 184, 0.16);
             box-shadow: 0 16px 28px rgba(0, 0, 0, 0.24);
-            min-height: 120px;
-        }
+            height: 220px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+}
 
         .metric-title {
             color: #94a3b8;
@@ -218,7 +103,8 @@ st.markdown(
             color: #cbd5e1;
             font-size: 0.8rem;
             margin-top: 0.35rem;
-        }
+            line-height: 1.45;
+}
 
         .formula-box {
             padding: 0.85rem 1rem;
@@ -248,6 +134,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
 st.title("Projectile Mission Simulator")
 
 st.markdown(
@@ -267,24 +154,14 @@ st.markdown(
 
 st.divider()
 
-def formula_line(title: str, formula: str, color: str = "#38bdf8") -> None:
-    st.markdown(
-        f"""
-        <p style="margin-bottom: 0.8rem;">
-            <strong>{title}:</strong>
-            <span style="color: {color}; font-weight: 700;">{formula}</span>
-        </p>
-        """,
-        unsafe_allow_html=True,
-    )
-    
+
 with st.expander("Physics model used in this simulator"):
     st.write(
         "This model assumes no air resistance and assumes the projectile lands at the same height from which it was launched."
     )
 
     col1, col2 = st.columns(2)
-    
+
     with col1:
         formula_line("Horizontal velocity", "uₓ = u cos(θ)")
 
@@ -314,11 +191,12 @@ with st.expander("Physics model used in this simulator"):
 
     with col8:
         formula_line("Target angle relation", "sin(2θ) = gR / u²")
-        
+
+
 left_column, right_column = st.columns([1, 2], gap="large")
 
-with left_column:
 
+with left_column:
     st.subheader("Mission Controls")
 
     selected_planet = st.selectbox(
@@ -389,6 +267,7 @@ suggested_angles = suggest_angles_for_target(
     gravity=gravity,
 )
 
+
 with right_column:
     st.subheader("Trajectory")
 
@@ -422,14 +301,22 @@ with right_column:
         zorder=5,
     )
 
-    ax.scatter(
-        [result["range"]],
-        [0],
-        s=110,
-        color=status_color,
-        label="Landing point",
-        zorder=5,
+    ball_img = mpimg.imread("ball.png")
+
+    ball_icon = OffsetImage(
+        ball_img,
+        zoom=0.18,
     )
+
+    ball_position = AnnotationBbox(
+        ball_icon,
+        (result["range"], 0),
+        frameon=False,
+        box_alignment=(0.5, 0.5),
+        zorder=6,
+    )
+
+    ax.add_artist(ball_position)
 
     ax.set_title(
         f"Launch on {selected_planet}",
@@ -442,7 +329,6 @@ with right_column:
     ax.set_ylabel("Vertical height, y (m)", color="#cbd5e1")
 
     ax.grid(True, color="#334155", alpha=0.65)
-
     ax.tick_params(colors="#cbd5e1")
 
     for spine in ax.spines.values():
@@ -456,6 +342,7 @@ with right_column:
         text.set_color("#f8fafc")
 
     st.pyplot(fig)
+    plt.close(fig)
 
 
 st.divider()
@@ -496,6 +383,7 @@ with metric_col4:
         "Total time in the air",
     )
 
+
 st.divider()
 
 st.subheader("Velocity Components")
@@ -517,6 +405,7 @@ with component_col2:
         "#8b5cf6",
         "uᵧ = u sinθ",
     )
+
 
 st.divider()
 
